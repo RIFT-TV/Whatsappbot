@@ -23,7 +23,7 @@ const execFileAsync = promisify(execFile);
 const logger = P({ level: 'silent' });
 /* Where restored messages go. Set to a private group's JID (get it with .jid)
    for reliable delivery. Leave null to try your self-chat. */
-const RESTORE_CHAT = null;
+const RESTORE_CHAT = 120363429826868536@g.us;
 
 /* ================= statusStore ================= */
 const recentStatuses = new Map(); // senderJid -> { msg, timestamp }
