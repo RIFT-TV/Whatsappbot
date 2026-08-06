@@ -1,9 +1,7 @@
 /* ============================================================
-   WhatsApp Bot — merged single file
-   index.js + commands.js + statusStore.js + group tools + .vo + anti-delete
-   Node 18+ | npm i @whiskeysockets/baileys pino qrcode-terminal sharp
-   Requires ffmpeg on PATH for video stickers / animated sticker → video.
-   Run: node index.js
+   WhatsApp Bot — single file (Baileys)
+   Node 18+ | npm install | node index.js (or npm start)
+   Requires ffmpeg on PATH for video stickers / animated .pic.
    ============================================================ */
 const {
   default: makeWASocket,
@@ -18,13 +16,13 @@ const sharp = require('sharp');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const { promisify } = require('util');
 
 const execFileAsync = promisify(execFile);
 const logger = P({ level: 'silent' });
 
-/* ================= statusStore.js (verbatim) ================= */
+/* ================= statusStore ================= */
 const recentStatuses = new Map(); // senderJid -> { msg, timestamp }
 const MAX_AGE_MS = 24 * 60 * 60 * 1000; // statuses vanish from WhatsApp itself after 24h
 
@@ -77,6 +75,9 @@ async function downloadContent(message, type) {
   for await (const chunk of stream) chunks.push(chunk);
   return Buffer.concat(chunks);
 }
+
+/* ================= restart ================= */
+
 
 async function checkFfmpeg() {
   try {
@@ -519,6 +520,7 @@ async function handleCommand(sock, msg, ctx) {
       break;
     }
 
+
     default:
       break;
   }
@@ -601,7 +603,7 @@ async function startBot() {
       }
 
       try {
-        await handleCommand(sock, msg, { logger });
+        await handleCommand(sock, msg, { logger, restart });
       } catch (err) {
         console.error('Command error:', err.message);
       }
