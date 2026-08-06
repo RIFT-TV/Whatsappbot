@@ -1,7 +1,9 @@
 /* ============================================================
-   WhatsApp Bot — single file (Baileys) + crash protection
-   Node 18+ | npm install | node index.js (or npm start)
-   Requires ffmpeg on PATH for video stickers / animated .pic.
+   WhatsApp Bot — merged single file
+   index.js + commands.js + statusStore.js + group tools + .vo + anti-delete
+   Node 18+ | npm i @whiskeysockets/baileys pino qrcode-terminal sharp
+   Requires ffmpeg on PATH for video stickers / animated sticker → video.
+   Run: node index.js
    ============================================================ */
 const {
   default: makeWASocket,
@@ -22,17 +24,7 @@ const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
 const logger = P({ level: 'silent' });
 
-/* ================= Crash protection ================= */
-process.on('uncaughtException', (err) => {
-  console.error('⚠️ Uncaught exception (bot keeps running):', err.message);
-});
-process.on('unhandledRejection', (reason) => {
-  console.error('⚠️ Unhandled rejection (bot keeps running):', reason);
-});
-process.on('SIGINT', () => process.exit(0));
-process.on('SIGTERM', () => process.exit(0));
-
-/* ================= statusStore ================= */
+/* ================= statusStore.js (verbatim) ================= */
 const recentStatuses = new Map(); // senderJid -> { msg, timestamp }
 const MAX_AGE_MS = 24 * 60 * 60 * 1000; // statuses vanish from WhatsApp itself after 24h
 
