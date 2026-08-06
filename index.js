@@ -1,5 +1,5 @@
 /* ============================================================
-   WhatsApp Bot — single file (Baileys)
+   WhatsApp Bot — single file (Baileys) + crash protection
    Node 18+ | npm install | node index.js (or npm start)
    Requires ffmpeg on PATH for video stickers / animated .pic.
    ============================================================ */
@@ -16,11 +16,21 @@ const sharp = require('sharp');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execFile, spawn } = require('child_process');
+const { execFile } = require('child_process');
 const { promisify } = require('util');
 
 const execFileAsync = promisify(execFile);
 const logger = P({ level: 'silent' });
+
+/* ================= Crash protection ================= */
+process.on('uncaughtException', (err) => {
+  console.error('⚠️ Uncaught exception (bot keeps running):', err.message);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('⚠️ Unhandled rejection (bot keeps running):', reason);
+});
+process.on('SIGINT', () => process.exit(0));
+process.on('SIGTERM', () => process.exit(0));
 
 /* ================= statusStore ================= */
 const recentStatuses = new Map(); // senderJid -> { msg, timestamp }
@@ -76,17 +86,6 @@ async function downloadContent(message, type) {
   return Buffer.concat(chunks);
 }
 
-/* ================= restart ================= */
-function restart() {
-  console.log('Restarting…');
-  spawn(process.argv[0], process.argv.slice(1), {
-    cwd: process.cwd(),
-    detached: true,
-    stdio: 'inherit',
-  }).unref();
-  process.exit(0);
-}
-
 async function checkFfmpeg() {
   try {
     await execFileAsync('ffmpeg', ['-version']);
@@ -116,7 +115,6 @@ const HELP_TEXT = `*Commands* (only work when sent from your own linked WhatsApp
 .unblock <number> – unblock a contact
 .delete – reply to a message to delete it for everyone (within ~48h)
 .savestat <number> – re-send a contact's most recent status the bot has seen
-.restart – restart the bot
 .help – show this message`;
 
 function getText(msg) {
@@ -529,12 +527,6 @@ async function handleCommand(sock, msg, ctx) {
       break;
     }
 
-    case 'restart': {
-      await reply('Restarting…');
-      ctx.restart();
-      break;
-    }
-
     default:
       break;
   }
@@ -617,7 +609,7 @@ async function startBot() {
       }
 
       try {
-        await handleCommand(sock, msg, { logger, restart });
+        await handleCommand(sock, msg, { logger });
       } catch (err) {
         console.error('Command error:', err.message);
       }
