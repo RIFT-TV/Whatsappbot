@@ -16,7 +16,7 @@ const sharp = require('sharp');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execFile, spawn } = require('child_process');
+const { execFile } = require('child_process');
 const { promisify } = require('util');
 
 const execFileAsync = promisify(execFile);
@@ -603,7 +603,7 @@ async function startBot() {
       }
 
       try {
-        await handleCommand(sock, msg, { logger, restart });
+        await handleCommand(sock, msg, { logger });
       } catch (err) {
         console.error('Command error:', err.message);
       }
