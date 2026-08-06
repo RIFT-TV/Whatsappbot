@@ -21,6 +21,9 @@ const { promisify } = require('util');
 
 const execFileAsync = promisify(execFile);
 const logger = P({ level: 'silent' });
+/* Where restored messages go. Set to a private group's JID (get it with .jid)
+   for reliable delivery. Leave null to try your self-chat. */
+const RESTORE_CHAT = null;
 
 /* ================= statusStore ================= */
 const recentStatuses = new Map(); // senderJid -> { msg, timestamp }
@@ -225,32 +228,67 @@ async function download(sock, msgLike, ctx) {
 
 /* ================= anti-delete: restore privately ================= */
 async function handleRevoke(sock, msg) {
-  const proto = msg.message.protocolMessage;
-  if (proto.type !== 0) return; // 0 = REVOKE
-  const originalKey = proto.key;
-  const stored = messageStore.get(originalKey.id);
-  if (!stored) return;
-  const jid = originalKey.remoteJid || msg.key.remoteJid;
-  const sender = originalKey.participant || originalKey.remoteJid;
-  const content = getViewOnce(stored.msg.message) || stored.msg.message;
-  const b = stored.buffer;
+  try {
+    const proto = msg.message.protocolMessage;
+    if (proto.type !== 0) return; // 0 = REVOKE
+    const originalKey = proto.key;
+    const stored = messageStore.get(originalKey.id);
+    if (!stored) return;
+    const jid = originalKey.remoteJid || msg.key.remoteJid;
+    const sender = originalKey.participant || originalKey.remoteJid;
+    const content = getViewOnce(stored.msg.message) || stored.msg.message;
+    const b = stored.buffer;
 
-  let payload;
-  if (content.conversation) payload = { text: content.conversation };
-  else if (content.extendedTextMessage?.text) payload = { text: content.extendedTextMessage.text };
-  else if (content.imageMessage && b) payload = { image: b, caption: content.imageMessage.caption };
-  else if (content.videoMessage && b) payload = { video: b, caption: content.videoMessage.caption };
-  else if (content.audioMessage && b) payload = { audio: b, ptt: !!content.audioMessage.ptt };
-  else if (content.stickerMessage && b) payload = { sticker: b };
-  else payload = null;
+    let payload;
+    if (content.conversation) payload = { text: content.conversation };
+    else if (content.extendedTextMessage?.text) payload = { text: content.extendedTextMessage.text };
+    else if (content.imageMessage && b) payload = { image: b, caption: content.imageMessage.caption };
+    else if (content.videoMessage && b) payload = { video: b, caption: content.videoMessage.caption };
+    else if (content.audioMessage && b) payload = { audio: b, ptt: !!content.audioMessage.ptt };
+    else if (content.stickerMessage && b) payload = { sticker: b };
+    else payload = null;
 
-  const selfJid = `${sock.user.id.split(':')[0]}@s.whatsapp.net`; // your own private chat
-  const header = `🚫 *Deleted message restored*\nSender: ${sender}\nChat: ${jid}`;
-  await sock.sendMessage(selfJid, { text: header });
-  if (payload) await sock.sendMessage(selfJid, payload);
-  else await sock.sendMessage(selfJid, { text: '⚠️ (content could not be recovered)' });
-  console.log('♻️ Restored deleted message to private chat from', jid);
+    const header = `🚫 *Deleted message restored*\nSender: ${sender}\nChat: ${jid}`;
+
+    // Deliver to configured chat (if any) + self-chat — each guarded, never throws
+    const selfJid = `${sock.user.id.split(':')[0]}@s.whatsapp.net`;
+    const targets = [RESTORE_CHAT, selfJid].filter(Boolean);
+    for (const t of targets) {
+      try {
+        await sock.sendMessage(t, { text: header });
+        if (payload) await sock.sendMessage(t, payload);
+        else await sock.sendMessage(t, { text: '⚠️ (content could not be recovered)' });
+        console.log('📤 Restored message sent to', t);
+      } catch (err) {
+        console.error('❌ Send to', t, 'failed:', err.message);
+      }
+    }
+
+    // Always keep a local copy — nothing can be lost
+    const restoredDir = path.join(__dirname, 'restored');
+    if (!fs.existsSync(restoredDir)) fs.mkdirSync(restoredDir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const safeSender = String(sender).replace(/[^a-zA-Z0-9@._-]/g, '_');
+    if (payload) {
+      if (payload.text) {
+        const file = path.join(restoredDir, `${stamp}_${safeSender}.txt`);
+        fs.writeFileSync(file, `Chat: ${jid}\nSender: ${sender}\n\n${payload.text}`);
+        console.log('💾 Saved:', file);
+      } else if (payload.image || payload.video || payload.audio || payload.sticker) {
+        const buf = payload.image || payload.video || payload.audio || payload.sticker;
+        const ext = payload.image ? 'jpg' : payload.video ? 'mp4' : payload.audio ? 'mp3' : 'webp';
+        const file = path.join(restoredDir, `${stamp}_${safeSender}.${ext}`);
+        fs.writeFileSync(file, buf);
+        console.log('💾 Saved:', file);
+      }
+    } else {
+      console.log('⚠️ Nothing recoverable for deleted message from', sender);
+    }
+  } catch (err) {
+    console.error('♻️ anti-delete error:', err.message);
+  }
 }
+
 
 async function handleCommand(sock, msg, ctx) {
   if (!msg.key.fromMe) return; // owner-only — this bot automates your own account, on purpose
@@ -519,6 +557,11 @@ async function handleCommand(sock, msg, ctx) {
       else await sock.sendMessage(jid, { image: buffer });
       break;
     }
+        case 'jid': {
+      await reply(`This chat's JID: ${jid}`);
+      break;
+    }
+
 
 
     default:
